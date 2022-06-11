@@ -54,15 +54,14 @@ fn spawn_command(exe: &str, args: std::str::SplitWhitespace) {
 fn handle_cd(args: std::str::SplitWhitespace) {
     // standard implementation defaults to $HOME if no dir is provided
     let default = get_home_dir();
-    let target = args.peekable()
+    let mut target = args.peekable()
                         .peek()
                         .map_or(default.clone(), |x| x.to_string());
-    let mut root = Path::new(&target);
 
-    // Allow for parsing ~ as a valid path to the home directory
-    if root.to_str().unwrap() == "~" {
-        root = Path::new(&default);
-    }
+    // Cool idea to replace the `~` with what it evaluates as ($HOME)
+    target = target.replace("~", default.as_str());
+
+    let root = Path::new(&target);
 
     match env::set_current_dir(&root) {
         Ok(_) => (),
@@ -71,6 +70,8 @@ fn handle_cd(args: std::str::SplitWhitespace) {
 }
 
 fn main() {
+    // Clear the screen just to start
+    print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
     loop {
         print_prompt();
 
