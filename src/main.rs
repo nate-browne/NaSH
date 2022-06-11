@@ -1,4 +1,5 @@
 use std::env;
+use std::collections::VecDeque;
 use std::io::{stdin, stdout, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio, exit};
@@ -31,15 +32,22 @@ fn main() {
                 eprintln!("Error reading input: {err}");
                 continue;
             }
-        }
-        let val = input.trim();
+        };
 
-        let mut cmd = Command::new(val);
+        let mut cmd_iter = input.trim().split_whitespace();
+        let exe = match cmd_iter.next() {
+            Some(va) => va,
+            None => "",
+        };
+
+        let args = cmd_iter;
+        let mut cmd = Command::new(exe);
+        cmd.args(args);
 
         if let Ok(mut proc) = cmd.spawn() {
-            proc.wait().expect("Command {val} wasn't running.");
+            proc.wait().expect("Command {exe} wasn't running.");
         } else {
-            eprintln!("{val} command didn't start.");
+            eprintln!("{exe} command didn't start.");
         }
     }
 }
