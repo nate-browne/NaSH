@@ -21,6 +21,8 @@ fn get_working_dir() -> String {
 
 /// Function that acts like above, but instead
 /// returns the value of $HOME, on whatever system.
+/// Will default to the root directory `/` if home couldn't be
+/// processed.
 fn get_home_dir() -> String {
     match dirs::home_dir() {
         Some(path) => {
