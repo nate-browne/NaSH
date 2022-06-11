@@ -92,7 +92,7 @@ fn handle_popd(stack: &mut VecDeque<String>, args: std::str::SplitWhitespace) {}
 /// to the `pwd` command
 fn handle_dirs(stack: &VecDeque<String>, args: std::str::SplitWhitespace) {
     for dir in stack {
-        print!("{} ", dir);
+        print!("{dir} ");
     }
     println!();
 }
