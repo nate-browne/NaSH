@@ -87,17 +87,22 @@ fn handle_cd(args: std::str::SplitWhitespace,
 /// This is the inverse of pushd, returning to the previous directory
 /// on the stack.
 fn handle_popd(stack: &mut VecDeque<String>) {
-    let target = match stack.pop_back() {
-        Some(v) => v,
-        None => String::from("/"), // default to root if no option is there (shouldn't happen)
-    };
+    if stack.len() > 1 {
 
-    let target = Path::new(&target);
+        let target = match stack.pop_back() {
+            Some(v) => v,
+            None => String::from("/"), // default to root if no option is there (shouldn't happen)
+        };
 
-    match env::set_current_dir(&target) {
-        Ok(_) => handle_dirs(stack),
-        Err(e) => eprintln!("Error switching directories: {e}"),
-    };
+        let target = Path::new(&target);
+
+        match env::set_current_dir(&target) {
+            Ok(_) => handle_dirs(stack),
+            Err(e) => eprintln!("Error switching directories: {e}"),
+        };
+    } else {
+        eprintln!("popd: directory stack empty");
+    }
 }
 
 /// Implements the `dirs` builtin.
