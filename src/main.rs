@@ -4,7 +4,7 @@ use std::env;
 use std::collections::VecDeque;
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 
 /// Function that returns the current directory, or ?
 /// if the directory cannot be read.
@@ -40,17 +40,6 @@ fn get_home_dir() -> String {
 fn print_prompt() {
     print!("{}> ", get_working_dir());
     stdout().flush().unwrap();
-}
-
-/// Function that spawns a process for a non-builtin command
-fn spawn_command(exe: &str, args: std::str::SplitWhitespace) {
-    // spawn a new process for the entered command
-    let mut cmd = Command::new(exe);
-    cmd.args(args);
-    match cmd.spawn() {
-        Ok(mut proc) => { proc.wait().expect("Command not running."); },
-        Err(e) => eprintln!("Error spawning thread: {e}"),
-    }
 }
 
 /// Function that handles the `cd` builtin
@@ -122,6 +111,7 @@ fn main() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
     let mut stack: VecDeque<String> = VecDeque::new();
     stack.push_back(get_working_dir());
+
     loop {
         print_prompt();
 
@@ -135,25 +125,69 @@ fn main() {
             }
         };
 
-        // grab first value as the command itself
-        let mut cmd_iter = input.trim().split_whitespace();
-        let exe = match cmd_iter.next() {
-            Some(va) => va,
-            None => "",
-        };
+        let mut commands = input.trim().split(" | ").peekable();
+        let mut previous_command = None;
 
-        // parse the rest of the input as arguments
-        let args = cmd_iter;
+        while let Some(exe) = commands.next() {
 
-        // handle builtins each as their own match case
-        // to see builtins, run a command like `man cd` or `man exit`
-        match exe {
-            "cd" => handle_cd(args.clone(), &mut stack, false),
-            "exit" => return,
-            "pushd" => handle_cd(args.clone(), &mut stack, true),
-            "popd" => handle_popd(&mut stack),
-            "dirs" => handle_dirs(&stack),
-            exe => spawn_command(exe, args),
+            // grab first value as the command itself
+            let mut cmd_iter = exe.trim().split_whitespace();
+            let exe = match cmd_iter.next() {
+                Some(va) => va,
+                None => "",
+            };
+
+            // parse the rest of the input as arguments
+            let args = cmd_iter;
+
+            // handle builtins each as their own match case
+            // to see builtins, run a command like `man cd` or `man exit`
+            match exe {
+                "exit" => return,
+                "cd" => {
+                    handle_cd(args.clone(), &mut stack, false);
+                },
+                "pushd" => {
+                    handle_cd(args.clone(), &mut stack, true);
+                },
+                "popd" => {
+                    handle_popd(&mut stack);
+                }
+                "dirs" => {
+                    handle_dirs(&stack);
+                },
+                "" => continue,
+                exe => {
+                    let stdin = previous_command
+                        .map_or(Stdio::inherit(), |output: Child| Stdio::from(output.stdout.unwrap()));
+
+                    // we have a pipe to send output through
+                    let stdout = if commands.peek().is_some() {
+                        Stdio::piped()
+                    // no more commands, send output to stdout
+                    } else {
+                        Stdio::inherit()
+                    };
+
+                    let output = Command::new(exe)
+                        .args(args)
+                        .stdin(stdin)
+                        .stdout(stdout)
+                        .spawn();
+
+                    match output {
+                        Ok(output) => { previous_command = Some(output); },
+                        Err(e) => {
+                            previous_command = None;
+                            eprintln!("Error occurred with excution: {e}");
+                        }
+                    };
+                },
+            };
+        }
+        // block main thread until final command in pipe finishes
+        if let Some(mut final_command) = previous_command {
+            final_command.wait().expect("final command in pipe failed to run");
         }
     }
 }
