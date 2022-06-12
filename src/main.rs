@@ -4,7 +4,7 @@ use std::env;
 use std::collections::VecDeque;
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 /// Function that returns the current directory, or ?
 /// if the directory cannot be read.
@@ -40,19 +40,6 @@ fn get_home_dir() -> String {
 fn print_prompt() {
     print!("{}> ", get_working_dir());
     stdout().flush().unwrap();
-}
-
-/// Function that spawns a process for a non-builtin command
-fn spawn_command(exe: &str,
-                 args: std::str::SplitWhitespace,
-                 previous_command: Option<&str>) {
-    // spawn a new process for the entered command
-    let mut cmd = Command::new(exe);
-    cmd.args(args);
-    match cmd.spawn() {
-        Ok(mut proc) => { proc.wait().expect("Command not running."); },
-        Err(e) => eprintln!("Error spawning thread: {e}"),
-    }
 }
 
 /// Function that handles the `cd` builtin
@@ -139,7 +126,7 @@ fn main() {
         };
 
         let mut commands = input.trim().split(" | ").peekable();
-        let mut previous_command: Option<&str> = None;
+        let mut previous_command = None;
 
         while let Some(exe) = commands.next() {
 
@@ -159,22 +146,48 @@ fn main() {
                 "exit" => return,
                 "cd" => {
                     handle_cd(args.clone(), &mut stack, false);
-                    previous_command = None;
                 },
                 "pushd" => {
                     handle_cd(args.clone(), &mut stack, true);
-                    previous_command = None;
                 },
                 "popd" => {
                     handle_popd(&mut stack);
-                    previous_command = None;
                 }
                 "dirs" => {
                     handle_dirs(&stack);
-                    previous_command = None;
                 },
-                exe => spawn_command(exe, args, previous_command),
+                "" => continue,
+                exe => {
+                    let stdin = previous_command
+                        .map_or(Stdio::inherit(), |output: Child| Stdio::from(output.stdout.unwrap()));
+
+                    // we have a pipe to send output through
+                    let stdout = if commands.peek().is_some() {
+                        Stdio::piped()
+                    // no more commands, send output to stdout
+                    } else {
+                        Stdio::inherit()
+                    };
+
+                    let output = Command::new(exe)
+                        .args(args)
+                        .stdin(stdin)
+                        .stdout(stdout)
+                        .spawn();
+
+                    match output {
+                        Ok(output) => { previous_command = Some(output); },
+                        Err(e) => {
+                            previous_command = None;
+                            eprintln!("Error occurred with excution: {e}");
+                        }
+                    };
+                },
             };
+        }
+        // block main thread until final command in pipe finishes
+        if let Some(mut final_command) = previous_command {
+            final_command.wait().expect("final command in pipe failed to run");
         }
     }
 }
