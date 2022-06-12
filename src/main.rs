@@ -4,7 +4,7 @@ use std::env;
 use std::collections::VecDeque;
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Function that returns the current directory, or ?
 /// if the directory cannot be read.
@@ -43,7 +43,9 @@ fn print_prompt() {
 }
 
 /// Function that spawns a process for a non-builtin command
-fn spawn_command(exe: &str, args: std::str::SplitWhitespace) {
+fn spawn_command(exe: &str,
+                 args: std::str::SplitWhitespace,
+                 previous_command: Option<&str>) {
     // spawn a new process for the entered command
     let mut cmd = Command::new(exe);
     cmd.args(args);
@@ -122,6 +124,7 @@ fn main() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
     let mut stack: VecDeque<String> = VecDeque::new();
     stack.push_back(get_working_dir());
+
     loop {
         print_prompt();
 
@@ -135,25 +138,43 @@ fn main() {
             }
         };
 
-        // grab first value as the command itself
-        let mut cmd_iter = input.trim().split_whitespace();
-        let exe = match cmd_iter.next() {
-            Some(va) => va,
-            None => "",
-        };
+        let mut commands = input.trim().split(" | ").peekable();
+        let mut previous_command: Option<&str> = None;
 
-        // parse the rest of the input as arguments
-        let args = cmd_iter;
+        while let Some(exe) = commands.next() {
 
-        // handle builtins each as their own match case
-        // to see builtins, run a command like `man cd` or `man exit`
-        match exe {
-            "cd" => handle_cd(args.clone(), &mut stack, false),
-            "exit" => return,
-            "pushd" => handle_cd(args.clone(), &mut stack, true),
-            "popd" => handle_popd(&mut stack),
-            "dirs" => handle_dirs(&stack),
-            exe => spawn_command(exe, args),
+            // grab first value as the command itself
+            let mut cmd_iter = exe.trim().split_whitespace();
+            let exe = match cmd_iter.next() {
+                Some(va) => va,
+                None => "",
+            };
+
+            // parse the rest of the input as arguments
+            let args = cmd_iter;
+
+            // handle builtins each as their own match case
+            // to see builtins, run a command like `man cd` or `man exit`
+            match exe {
+                "exit" => return,
+                "cd" => {
+                    handle_cd(args.clone(), &mut stack, false);
+                    previous_command = None;
+                },
+                "pushd" => {
+                    handle_cd(args.clone(), &mut stack, true);
+                    previous_command = None;
+                },
+                "popd" => {
+                    handle_popd(&mut stack);
+                    previous_command = None;
+                }
+                "dirs" => {
+                    handle_dirs(&stack);
+                    previous_command = None;
+                },
+                exe => spawn_command(exe, args, previous_command),
+            };
         }
     }
 }
