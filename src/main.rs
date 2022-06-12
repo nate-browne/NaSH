@@ -54,23 +54,31 @@ fn spawn_command(exe: &str, args: std::str::SplitWhitespace) {
 }
 
 /// Function that handles the `cd` builtin
-fn handle_cd(args: std::str::SplitWhitespace, stack: &mut VecDeque<String>) {
+fn handle_cd(args: std::str::SplitWhitespace,
+             stack: &mut VecDeque<String>,
+             from_pushd: bool) {
     // standard implementation defaults to $HOME if no dir is provided
     let default = get_home_dir();
     let mut target = args.peekable()
-                        .peek()
-                        .map_or(default.clone(), |x| x.to_string());
+                         .peek()
+                         .map_or(default.clone(), |x| x.to_string());
 
     // Cool idea to replace the `~` with what it evaluates as ($HOME)
     target = target.replace("~", default.as_str());
+
+    if from_pushd {
+        stack.push_back(target.clone());
+    }
 
     let root = Path::new(&target);
 
     match env::set_current_dir(&root) {
         // This is needed to update the directory stack
         Ok(_) => {
-            stack.pop_back();
-            stack.push_back(target);
+            if !from_pushd {
+                stack.pop_back();
+                stack.push_back(target);
+            }
         },
         Err(e) => eprintln!("Error switching directories: {e}"),
     }
@@ -79,18 +87,21 @@ fn handle_cd(args: std::str::SplitWhitespace, stack: &mut VecDeque<String>) {
 /// Implements the `pushd` builtin.
 /// This builtin goes to a new directory, adding it to the
 /// top of a directory stack.
-fn handle_pushd(stack: &mut VecDeque<String>, args: std::str::SplitWhitespace) {}
+fn handle_pushd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {
+    handle_cd(args.clone(), stack, true);
+    handle_dirs(stack);
+}
 
 /// Implements the `popd` builtin.
 /// This is the inverse of pushd, returning to the previous directory
 /// on the stack.
-fn handle_popd(stack: &mut VecDeque<String>, args: std::str::SplitWhitespace) {}
+fn handle_popd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {}
 
 /// Implements the `dirs` builtin.
 /// This function prints out the current directory stack
 /// If the directory stack only has 1 value, it functions identically
 /// to the `pwd` command
-fn handle_dirs(stack: &VecDeque<String>, args: std::str::SplitWhitespace) {
+fn handle_dirs(stack: &VecDeque<String>) {
     for dir in stack {
         print!("{dir} ");
     }
@@ -100,7 +111,8 @@ fn handle_dirs(stack: &VecDeque<String>, args: std::str::SplitWhitespace) {
 fn main() {
     // Clear the screen just to start
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
-    let mut dir_stk: VecDeque<String> = VecDeque::new();
+    let mut stack: VecDeque<String> = VecDeque::new();
+    stack.push_back(get_working_dir());
     loop {
         print_prompt();
 
@@ -127,11 +139,11 @@ fn main() {
         // handle builtins each as their own match case
         // to see builtins, run a command like `man cd` or `man exit`
         match exe {
-            "cd" => handle_cd(args, &mut dir_stk),
+            "cd" => handle_cd(args.clone(), &mut stack, false),
             "exit" => return,
-            "pushd" => handle_pushd(&mut dir_stk, args),
-            "popd" => handle_popd(&mut dir_stk, args),
-            "dirs" => handle_dirs(&dir_stk, args),
+            "pushd" => handle_pushd(&mut stack, &args),
+            "popd" => handle_popd(&mut stack, &args),
+            "dirs" => handle_dirs(&stack),
             exe => spawn_command(exe, args),
         }
     }
