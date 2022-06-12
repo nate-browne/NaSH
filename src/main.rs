@@ -78,15 +78,18 @@ fn handle_cd(args: std::str::SplitWhitespace,
 fn handle_popd(stack: &mut VecDeque<String>) {
     if stack.len() > 1 {
 
-        let target = match stack.pop_back() {
-            Some(v) => v,
-            None => String::from("/"), // default to root if no option is there (shouldn't happen)
+        stack.pop_back();
+        let target = match stack.back() {
+            Some(v) => v.as_str(),
+            None => "/", // default to root if no option is there (shouldn't happen)
         };
 
         let target = Path::new(&target);
 
         match env::set_current_dir(&target) {
-            Ok(_) => handle_dirs(stack),
+            Ok(_) => {
+                handle_dirs(stack);
+            },
             Err(e) => eprintln!("Error switching directories: {e}"),
         };
     } else {
