@@ -66,10 +66,6 @@ fn handle_cd(args: std::str::SplitWhitespace,
     // Cool idea to replace the `~` with what it evaluates as ($HOME)
     target = target.replace("~", default.as_str());
 
-    if from_pushd {
-        stack.push_back(target.clone());
-    }
-
     let root = Path::new(&target);
 
     match env::set_current_dir(&root) {
@@ -78,31 +74,45 @@ fn handle_cd(args: std::str::SplitWhitespace,
             if !from_pushd {
                 stack.pop_back();
                 stack.push_back(target);
+            } else {
+                stack.push_back(target);
+                handle_dirs(stack);
             }
         },
         Err(e) => eprintln!("Error switching directories: {e}"),
-    }
+    };
 }
 
 /// Implements the `pushd` builtin.
-/// This builtin goes to a new directory, adding it to the
-/// top of a directory stack.
+/// Basically a thin wrapper around cd that changes some options
 fn handle_pushd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {
     handle_cd(args.clone(), stack, true);
-    handle_dirs(stack);
 }
 
 /// Implements the `popd` builtin.
 /// This is the inverse of pushd, returning to the previous directory
 /// on the stack.
-fn handle_popd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {}
+fn handle_popd(stack: &mut VecDeque<String>) {
+    let target = match stack.pop_back() {
+        Some(v) => v,
+        None => String::from("/"), // default to root if no option is there (shouldn't happen)
+    };
+
+    let target = Path::new(&target);
+
+    match env::set_current_dir(&target) {
+        Ok(_) => handle_dirs(stack),
+        Err(e) => eprintln!("Error switching directories: {e}"),
+    };
+}
 
 /// Implements the `dirs` builtin.
 /// This function prints out the current directory stack
 /// If the directory stack only has 1 value, it functions identically
 /// to the `pwd` command
 fn handle_dirs(stack: &VecDeque<String>) {
-    for dir in stack {
+    // need to print in reverse to show proper stack order
+    for dir in stack.iter().rev() {
         print!("{dir} ");
     }
     println!();
@@ -142,7 +152,7 @@ fn main() {
             "cd" => handle_cd(args.clone(), &mut stack, false),
             "exit" => return,
             "pushd" => handle_pushd(&mut stack, &args),
-            "popd" => handle_popd(&mut stack, &args),
+            "popd" => handle_popd(&mut stack),
             "dirs" => handle_dirs(&stack),
             exe => spawn_command(exe, args),
         }
