@@ -1,6 +1,7 @@
 extern crate dirs;
 
 use std::env;
+use std::collections::VecDeque;
 use std::io::{stdin, stdout, Write};
 use std::path::Path;
 use std::process::Command;
@@ -21,6 +22,8 @@ fn get_working_dir() -> String {
 
 /// Function that acts like above, but instead
 /// returns the value of $HOME, on whatever system.
+/// Will default to the root directory `/` if home couldn't be
+/// processed.
 fn get_home_dir() -> String {
     match dirs::home_dir() {
         Some(path) => {
@@ -50,13 +53,15 @@ fn spawn_command(exe: &str, args: std::str::SplitWhitespace) {
     }
 }
 
-/// Function that handles the `cd` command
-fn handle_cd(args: std::str::SplitWhitespace) {
+/// Function that handles the `cd` builtin
+fn handle_cd(args: std::str::SplitWhitespace,
+             stack: &mut VecDeque<String>,
+             from_pushd: bool) {
     // standard implementation defaults to $HOME if no dir is provided
     let default = get_home_dir();
     let mut target = args.peekable()
-                        .peek()
-                        .map_or(default.clone(), |x| x.to_string());
+                         .peek()
+                         .map_or(default.clone(), |x| x.to_string());
 
     // Cool idea to replace the `~` with what it evaluates as ($HOME)
     target = target.replace("~", default.as_str());
@@ -64,14 +69,60 @@ fn handle_cd(args: std::str::SplitWhitespace) {
     let root = Path::new(&target);
 
     match env::set_current_dir(&root) {
-        Ok(_) => (),
+        // This is needed to update the directory stack
+        Ok(_) => {
+            if !from_pushd {
+                stack.pop_back();
+                stack.push_back(target);
+            } else {
+                stack.push_back(target);
+                handle_dirs(stack);
+            }
+        },
         Err(e) => eprintln!("Error switching directories: {e}"),
+    };
+}
+
+/// Implements the `pushd` builtin.
+/// Basically a thin wrapper around cd that changes some options
+fn handle_pushd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {
+    handle_cd(args.clone(), stack, true);
+}
+
+/// Implements the `popd` builtin.
+/// This is the inverse of pushd, returning to the previous directory
+/// on the stack.
+fn handle_popd(stack: &mut VecDeque<String>) {
+    let target = match stack.pop_back() {
+        Some(v) => v,
+        None => String::from("/"), // default to root if no option is there (shouldn't happen)
+    };
+
+    let target = Path::new(&target);
+
+    match env::set_current_dir(&target) {
+        Ok(_) => handle_dirs(stack),
+        Err(e) => eprintln!("Error switching directories: {e}"),
+    };
+}
+
+/// Implements the `dirs` builtin.
+/// This function prints out the current directory stack
+/// If the directory stack only has 1 value, it functions identically
+/// to the `pwd` command
+fn handle_dirs(stack: &VecDeque<String>) {
+    // need to print in reverse to show proper stack order
+    for dir in stack.iter().rev() {
+        print!("{dir} ");
     }
+    println!();
 }
 
 fn main() {
     // Clear the screen just to start
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+    let mut stack: VecDeque<String> = VecDeque::new();
+    stack.push_back(get_working_dir());
     loop {
         print_prompt();
 
@@ -98,8 +149,11 @@ fn main() {
         // handle builtins each as their own match case
         // to see builtins, run a command like `man cd` or `man exit`
         match exe {
-            "cd" => handle_cd(args),
+            "cd" => handle_cd(args.clone(), &mut stack, false),
             "exit" => return,
+            "pushd" => handle_pushd(&mut stack, &args),
+            "popd" => handle_popd(&mut stack),
+            "dirs" => handle_dirs(&stack),
             exe => spawn_command(exe, args),
         }
     }
