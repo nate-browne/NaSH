@@ -83,12 +83,6 @@ fn handle_cd(args: std::str::SplitWhitespace,
     };
 }
 
-/// Implements the `pushd` builtin.
-/// Basically a thin wrapper around cd that changes some options
-fn handle_pushd(stack: &mut VecDeque<String>, args: &std::str::SplitWhitespace) {
-    handle_cd(args.clone(), stack, true);
-}
-
 /// Implements the `popd` builtin.
 /// This is the inverse of pushd, returning to the previous directory
 /// on the stack.
@@ -151,7 +145,7 @@ fn main() {
         match exe {
             "cd" => handle_cd(args.clone(), &mut stack, false),
             "exit" => return,
-            "pushd" => handle_pushd(&mut stack, &args),
+            "pushd" => handle_cd(args.clone(), &mut stack, true),
             "popd" => handle_popd(&mut stack),
             "dirs" => handle_dirs(&stack),
             exe => spawn_command(exe, args),
