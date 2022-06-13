@@ -114,13 +114,10 @@ fn main() {
 
         // Grab the user's full command
         let mut input = String::new();
-        match stdin().read_line(&mut input) {
-            Ok(_) => (),
-            Err(err) => {
-                eprintln!("Error reading input: {err}");
-                continue;
-            }
-        };
+        if let Err(err) = stdin().read_line(&mut input) {
+            eprintln!("Error reading input: {err}");
+            continue;
+        }
 
         let mut commands = input.trim().split(" | ").peekable();
         let mut previous_command = None;
